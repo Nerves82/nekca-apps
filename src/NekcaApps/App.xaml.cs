@@ -56,7 +56,7 @@ public partial class App : Application
 
         Settings = LauncherSettings.Load(Layout);
         Theme.Apply(Settings.Theme);
-        SystemEvents.UserPreferenceChanged += (_, _) => Dispatcher.BeginInvoke(() => { if (Settings.Theme == ThemeMode.System) Theme.Apply(Settings.Theme); });
+        SystemEvents.UserPreferenceChanged += (_, _) => Dispatcher.BeginInvoke(() => { if (Settings.Theme == AppTheme.System) Theme.Apply(Settings.Theme); });
         CreateTray();
         SyncStartWithWindows();
 
@@ -66,7 +66,7 @@ public partial class App : Application
         window.StartChecking(CheckEvery);
     }
 
-    public void SetTheme(ThemeMode mode)
+    public void SetTheme(AppTheme mode)
     {
         Settings.Theme = mode;
         Settings.Save(Layout);

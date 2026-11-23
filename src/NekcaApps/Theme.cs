@@ -38,7 +38,7 @@ public static class Theme
         catch (Exception) { return false; }
     }
 
-    public static void Apply(ThemeMode mode)
+    public static void Apply(AppTheme mode)
     {
         IsDark = LauncherSettings.IsDark(mode, WindowsUsesDark());
         var res = Application.Current.Resources;

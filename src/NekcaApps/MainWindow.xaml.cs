@@ -79,8 +79,8 @@ public partial class MainWindow : Window
 
     private void ShowThemeButton() => ThemeButton.Content = App.Current.Settings.Theme switch
     {
-        ThemeMode.Light => "☀ Light",
-        ThemeMode.Dark => "☾ Dark",
+        AppTheme.Light => "☀ Light",
+        AppTheme.Dark => "☾ Dark",
         _ => "◐ Auto",
     };
 

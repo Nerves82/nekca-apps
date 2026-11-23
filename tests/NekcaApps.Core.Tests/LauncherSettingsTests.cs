@@ -7,33 +7,33 @@ public class LauncherSettingsTests
     {
         var layout = new InstallLayout(Fakes.TempFolder());
         var fresh = LauncherSettings.Load(layout);
-        Assert.Equal(ThemeMode.System, fresh.Theme);
+        Assert.Equal(AppTheme.System, fresh.Theme);
         Assert.True(fresh.CloseToTray);
         Assert.False(fresh.StartWithWindows);
 
-        fresh.Theme = ThemeMode.Dark;
+        fresh.Theme = AppTheme.Dark;
         fresh.StartWithWindows = true;
         fresh.Save(layout);
         var again = LauncherSettings.Load(layout);
-        Assert.Equal(ThemeMode.Dark, again.Theme);
+        Assert.Equal(AppTheme.Dark, again.Theme);
         Assert.True(again.StartWithWindows);
         Assert.Contains("\"Dark\"", File.ReadAllText(Path.Combine(layout.Root, "settings.json")));
 
         File.WriteAllText(Path.Combine(layout.Root, "settings.json"), "{ not json");
-        Assert.Equal(ThemeMode.System, LauncherSettings.Load(layout).Theme);
+        Assert.Equal(AppTheme.System, LauncherSettings.Load(layout).Theme);
     }
 
     [Theory]
-    [InlineData(ThemeMode.System, false, false)]
-    [InlineData(ThemeMode.System, true, true)]
-    [InlineData(ThemeMode.Light, true, false)]
-    [InlineData(ThemeMode.Dark, false, true)]
-    public void Theme_FollowsWindowsOnlyOnSystem(ThemeMode mode, bool windowsDark, bool dark) =>
+    [InlineData(AppTheme.System, false, false)]
+    [InlineData(AppTheme.System, true, true)]
+    [InlineData(AppTheme.Light, true, false)]
+    [InlineData(AppTheme.Dark, false, true)]
+    public void Theme_FollowsWindowsOnlyOnSystem(AppTheme mode, bool windowsDark, bool dark) =>
         Assert.Equal(dark, LauncherSettings.IsDark(mode, windowsDark));
 
     [Fact]
     public void Theme_Cycles() =>
-        Assert.Equal(ThemeMode.System, LauncherSettings.Next(LauncherSettings.Next(LauncherSettings.Next(ThemeMode.System))));
+        Assert.Equal(AppTheme.System, LauncherSettings.Next(LauncherSettings.Next(LauncherSettings.Next(AppTheme.System))));
 
     [Fact]
     public void Notices_AnnounceEachUpdateOnce()

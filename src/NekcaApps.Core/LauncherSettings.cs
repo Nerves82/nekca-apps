@@ -3,13 +3,13 @@ using System.Text.Json.Serialization;
 
 namespace NekcaApps.Core;
 
-public enum ThemeMode { System, Light, Dark }
+public enum AppTheme { System, Light, Dark }
 
 /// <summary>The launcher's own preferences (settings.json in the install folder).</summary>
 public sealed class LauncherSettings
 {
     [JsonConverter(typeof(JsonStringEnumConverter))]
-    public ThemeMode Theme { get; set; } = ThemeMode.System;
+    public AppTheme Theme { get; set; } = AppTheme.System;
 
     /// <summary>Closing the window keeps NEKCA Apps running by the clock, checking for updates.</summary>
     public bool CloseToTray { get; set; } = true;
@@ -21,10 +21,10 @@ public sealed class LauncherSettings
     public bool TrayTipShown { get; set; }
 
     /// <summary>The next theme when the theme button is clicked: System → Light → Dark → System.</summary>
-    public static ThemeMode Next(ThemeMode m) => m switch { ThemeMode.System => ThemeMode.Light, ThemeMode.Light => ThemeMode.Dark, _ => ThemeMode.System };
+    public static AppTheme Next(AppTheme m) => m switch { AppTheme.System => AppTheme.Light, AppTheme.Light => AppTheme.Dark, _ => AppTheme.System };
 
     /// <summary>Dark or not, for a mode and whether Windows is set to dark apps.</summary>
-    public static bool IsDark(ThemeMode m, bool windowsDark) => m == ThemeMode.Dark || (m == ThemeMode.System && windowsDark);
+    public static bool IsDark(AppTheme m, bool windowsDark) => m == AppTheme.Dark || (m == AppTheme.System && windowsDark);
 
     private static string File(InstallLayout layout) => Path.Combine(layout.Root, "settings.json");
 
