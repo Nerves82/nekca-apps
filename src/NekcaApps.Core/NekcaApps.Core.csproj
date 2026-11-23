@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Everything the launcher does that isn't a window: the app list, GitHub releases, versions, installing,
+       switching and removing versions. No Windows-only code, so it's tested on any machine. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>NekcaApps.Core</RootNamespace>
+  </PropertyGroup>
+
+  <!-- The app list built into the launcher, used until the online one can be read. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\apps.json" LogicalName="apps.json" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,81 @@
+# Builds, tests and packages NEKCA Apps on GitHub's Windows machines.
+# Every push to main (every merged pull request) publishes a GitHub Release; the launcher updates itself from these:
+#   https://github.com/Nerves82/nekca-apps/releases/latest/download/NekcaApps-win-x64.zip
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to create releases
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Work out version
+        id: ver
+        shell: pwsh
+        run: |
+          $sha = "${{ github.sha }}".Substring(0, 7)
+          if ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}".TrimStart("v") }
+          else { $v = "0.1.${{ github.run_number }}" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "info=$v ($sha)" >> $env:GITHUB_OUTPUT
+
+      - name: Check apps.json
+        shell: pwsh
+        run: |
+          $c = Get-Content apps.json -Raw | ConvertFrom-Json
+          if (-not $c.apps -or $c.apps.Count -eq 0) { throw "apps.json lists no apps" }
+
+      - name: Restore
+        run: dotnet restore NekcaApps.sln
+
+      - name: Build
+        run: dotnet build NekcaApps.sln -c Release --no-restore "-p:Version=${{ steps.ver.outputs.version }}" "-p:InformationalVersion=${{ steps.ver.outputs.info }}"
+
+      - name: Test
+        run: dotnet test NekcaApps.sln -c Release --no-build --logger "console;verbosity=normal" --logger GitHubActions
+
+      - name: Publish (self-contained, win-x64)
+        run: >
+          dotnet publish src/NekcaApps/NekcaApps.csproj -c Release -r win-x64 --self-contained true
+          "-p:Version=${{ steps.ver.outputs.version }}" "-p:InformationalVersion=${{ steps.ver.outputs.info }}"
+          -o "publish/NekcaApps-${{ steps.ver.outputs.version }}"
+
+      - name: Zip
+        shell: pwsh
+        run: |
+          # NekcaApps-0.1.7-win-x64.zip -> NekcaApps-0.1.7\NekcaApps.exe; also under a fixed name for the README link
+          Compress-Archive -Path "publish/NekcaApps-${{ steps.ver.outputs.version }}" -DestinationPath "NekcaApps-${{ steps.ver.outputs.version }}-win-x64.zip"
+          Copy-Item "NekcaApps-${{ steps.ver.outputs.version }}-win-x64.zip" "NekcaApps-win-x64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NekcaApps-${{ steps.ver.outputs.version }}-win-x64
+          path: publish/
+          retention-days: 30
+
+      - name: Publish release (main and version tags only)
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "v${{ steps.ver.outputs.version }}" }
+          gh release create $tag "NekcaApps-win-x64.zip" "NekcaApps-${{ steps.ver.outputs.version }}-win-x64.zip" `
+            --target "${{ github.sha }}" --title "NEKCA Apps $tag" --generate-notes --latest

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The launcher window. Plain WPF (no WebView2), so it keeps working even if an app's browser engine doesn't. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>NekcaApps</RootNamespace>
+    <AssemblyName>NekcaApps</AssemblyName>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationIcon>nekca.ico</ApplicationIcon>
+    <Title>NEKCA Apps</Title>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="nekca.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NekcaApps.Core\NekcaApps.Core.csproj" />
+  </ItemGroup>
+
+</Project>

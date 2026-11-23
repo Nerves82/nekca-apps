@@ -1,0 +1,12 @@
+{
+  "apps": [
+    {
+      "id": "fuel-intake",
+      "name": "Fuel Assistance Intake",
+      "description": "Crisis Fuel & Electric Assistance intake, eligibility and print packets.",
+      "repo": "Nerves82/fuel-intake-app",
+      "asset": "FuelIntake-{version}-win-x64.zip",
+      "exe": "FuelIntake.exe"
+    }
+  ]
+}
