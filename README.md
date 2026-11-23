@@ -2,8 +2,21 @@
 
 One place to install, update and roll back NEKCA's desktop apps. No admin rights needed.
 
-**[Download NEKCA Apps](https://github.com/Nerves82/nekca-apps/releases/latest/download/NekcaApps-win-x64.zip)**: unzip it, run
-`NekcaApps.exe`, and click **Install NEKCA Apps**. After that, open it from the Start Menu (or the desktop shortcut).
+## Getting it
+
+**Newest version**
+[![Latest release](https://img.shields.io/github/v/release/Nerves82/nekca-apps?label=latest&cacheSeconds=60)](https://github.com/Nerves82/nekca-apps/releases/latest):
+**[Download NEKCA Apps](https://nerves82.github.io/nekca-apps/download/)**
+(the file is named with its version, e.g. `NekcaApps-0.1.4-win-x64.zip`)
+· [All releases](https://github.com/Nerves82/nekca-apps/releases)
+
+Backup link with a fixed file name (no version in it):
+[NekcaApps-win-x64.zip](https://github.com/Nerves82/nekca-apps/releases/latest/download/NekcaApps-win-x64.zip)
+
+Unzip it, run `NekcaApps.exe` and click **Install NEKCA Apps**. Windows may say "unknown publisher" the first time:
+choose **More info → Run anyway**. After that, open it from the Start Menu (or the desktop shortcut); it updates itself.
+
+After a merge, the new release takes about 2–3 minutes to build. Until then the links still give the previous version.
 
 ## What it does
 
@@ -12,6 +25,9 @@ One place to install, update and roll back NEKCA's desktop apps. No admin rights
 - **All versions** lists every release with its changes. Pick any version to go back to it (or forward again).
 - Keeps a Start Menu shortcut (and, if you tick it, a desktop shortcut) pointing at the version in use.
 - Updates itself: when there's a new NEKCA Apps release, a banner offers **Update now**.
+- Stays running by the clock (the system tray) when its window is closed, checks for updates every few hours and
+  pops up a notice when one is out. Right-click the tray icon to open it, check now, start it with Windows, or quit.
+- Light and dark mode (or follow Windows), from the button at the top.
 
 Everything lives under `%LOCALAPPDATA%\NEKCA Apps` (per user, no admin). Each version gets its own folder, so an update
 never breaks a copy that's open. The version in use and the one before it are kept; older ones are removed. Apps keep

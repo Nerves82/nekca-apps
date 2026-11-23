@@ -5,6 +5,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <!-- only for the tray icon (NotifyIcon); keep its names out of the WPF code -->
+    <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>NekcaApps</RootNamespace>
     <AssemblyName>NekcaApps</AssemblyName>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
@@ -14,6 +16,8 @@
 
   <ItemGroup>
     <Resource Include="nekca.ico" />
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
 
   <ItemGroup>

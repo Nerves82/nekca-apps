@@ -27,3 +27,18 @@ Decisions and rules for NEKCA Apps (the launcher). Keep this up to date.
 
 - `fuel-intake`: Nerves82/fuel-intake-app, `FuelIntake-{version}-win-x64.zip`, `FuelIntake.exe`. Its settings live in
   `%LOCALAPPDATA%\FuelIntake` (shared by all versions) and its data in the chosen client files folder.
+
+## Tray, single instance, dark mode
+
+- **One copy per user** (`Local\NekcaApps.Running` mutex). Starting it again signals the running copy
+  (`Local\NekcaApps.Show`) to show its window. Self-update releases the lock before starting the new version.
+- **Tray**: closing the window hides it (unless "Keep running when the window is closed" is unticked in the tray
+  menu); the first time, a tip says so. It checks for updates at start and every 4 hours and shows a notice for each
+  new version once. "Quit NEKCA Apps" in the tray menu really exits.
+- **Start when Windows starts**: per-user `HKCU\...\CurrentVersion\Run` value "NEKCA Apps" = `"<exe>" --tray` (starts
+  hidden). Only for the installed launcher; the value is rewritten at each start so it follows launcher updates.
+- **Theme**: System (Windows' app mode, followed live), Light or Dark, saved in `settings.json`. Colours are the
+  brushes in App.xaml, swapped by `Theme.Apply`; always use `DynamicResource` for them. The title bar follows too.
+- WinForms is referenced only for the tray icon (`NotifyIcon`); its global usings are removed to avoid name clashes.
+- **Download page**: `docs/download/index.html` (GitHub Pages from `main` /docs) sends the browser to the newest
+  versioned zip, so the downloaded file name shows the version.

@@ -11,13 +11,16 @@ public partial class MainWindow : Window
 {
     private static readonly HttpClient Http = CreateHttp();
 
-    private readonly InstallLayout layout = InstallLayout.ForCurrentUser();
+    private readonly InstallLayout layout = App.Current.Layout;
     private readonly InstallState state;
     private readonly Installer installer;
     private readonly GitHubReleaseSource releases;
     private readonly List<AppCard> cards = [];
     private readonly AppVersion running = RunningVersion();
     private Release? launcherUpdate;
+    private readonly UpdateNotices notices = new();
+    private System.Windows.Threading.DispatcherTimer? timer;
+    private bool loading;
 
     public MainWindow()
     {
@@ -28,7 +31,58 @@ public partial class MainWindow : Window
         releases = new GitHubReleaseSource(Http, layout.CacheFolder);
         VersionText.Text = $"Version {running}";
         InstallBanner.Visibility = LauncherRules.RunsInstalled(layout, AppContext.BaseDirectory) ? Visibility.Collapsed : Visibility.Visible;
+        ShowThemeButton();
+        SourceInitialized += (_, _) => Theme.TitleBar(this);
+        Closing += OnClosing;
     }
+
+    // ---- staying in the tray
+
+    private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        if (App.Current.Quitting) return;
+        if (App.Current.Settings.CloseToTray)
+        {
+            e.Cancel = true;
+            Hide();
+            App.Current.WindowClosedToTray();
+        }
+        else App.Current.Quit();
+    }
+
+    /// <summary>Checks now and then every <paramref name="every"/>, announcing new updates from the tray.</summary>
+    public void StartChecking(TimeSpan every)
+    {
+        timer = new System.Windows.Threading.DispatcherTimer { Interval = every };
+        timer.Tick += async (_, _) => await CheckInBackgroundAsync(announce: true);
+        timer.Start();
+        _ = CheckInBackgroundAsync(announce: !IsVisible);
+    }
+
+    public async Task CheckInBackgroundAsync(bool announce)
+    {
+        await LoadAsync();
+        var available = cards.Where(c => c.UpdateAvailable && c.Latest is not null).Select(c => (c.Name, c.Latest!.Version)).ToList();
+        if (launcherUpdate is { } u) available.Add(("NEKCA Apps", u.Version));
+        var fresh = notices.New(available);
+        if (announce && !IsVisible) App.Current.AnnounceUpdates(fresh);
+        if (available.Count == 0) App.Current.ClearUpdateFlag();
+    }
+
+    // ---- theme
+
+    private void OnTheme(object sender, RoutedEventArgs e)
+    {
+        App.Current.SetTheme(LauncherSettings.Next(App.Current.Settings.Theme));
+        ShowThemeButton();
+    }
+
+    private void ShowThemeButton() => ThemeButton.Content = App.Current.Settings.Theme switch
+    {
+        AppTheme.Light => "☀ Light",
+        AppTheme.Dark => "☾ Dark",
+        _ => "◐ Auto",
+    };
 
     private async void OnLoaded(object sender, RoutedEventArgs e) => await LoadAsync();
 
@@ -36,6 +90,8 @@ public partial class MainWindow : Window
 
     private async Task LoadAsync()
     {
+        if (loading) return;
+        loading = true;
         RefreshButton.IsEnabled = false;
         try
         {
@@ -65,7 +121,7 @@ public partial class MainWindow : Window
             CheckedText.Text = $"Checked {DateTime.Now:h:mm tt}";
             CleanUpOldVersions();
         }
-        finally { RefreshButton.IsEnabled = true; }
+        finally { RefreshButton.IsEnabled = true; loading = false; }
     }
 
     private AppCard NewCard(AppEntry app)
@@ -228,8 +284,10 @@ public partial class MainWindow : Window
 
     private static void StartAndClose(string exe)
     {
+        // let go of the one-instance lock first, or the new copy would just show this window and quit
+        App.Current.ReleaseForRestart();
         Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe) });
-        Application.Current.Shutdown();
+        App.Current.Quit();
     }
 
     private static AppVersion RunningVersion()

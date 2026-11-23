@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Download NEKCA Apps</title>
+<style>
+  :root { --fg: #1f2a24; --muted: #5b6b62; --accent: #1f5a32; --bg: #f3f5f2; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, "Segoe UI", sans-serif; }
+  main { max-width: 34rem; margin: 12vh auto; padding: 24px 16px; background: #fff; border-radius: 8px; border-top: 4px solid var(--accent); }
+  h1 { font-size: 1.3rem; margin: 0 0 8px; color: var(--accent); }
+  p { margin: 8px 0; }
+  .note { color: var(--muted); font-size: 14px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>NEKCA Apps</h1>
+  <p id="status">Finding the newest version…</p>
+  <p class="note">Unzip it, run <strong>NekcaApps.exe</strong> and click <strong>Install NEKCA Apps</strong>. If Windows says "unknown publisher", choose
+    <strong>More info → Run anyway</strong>.</p>
+  <p class="note"><a href="https://github.com/Nerves82/nekca-apps/releases/latest">Latest release page</a> ·
+    <a href="https://github.com/Nerves82/nekca-apps/releases">All releases</a></p>
+</main>
+<script>
+  // Sends the browser to the newest release's versioned zip (NekcaApps-<version>-win-x64.zip),
+  // so the downloaded file name shows the version.
+  (async () => {
+    const status = document.getElementById("status");
+    const fallback = "https://github.com/Nerves82/nekca-apps/releases/latest/download/NekcaApps-win-x64.zip";
+    try {
+      const res = await fetch("https://api.github.com/repos/Nerves82/nekca-apps/releases/latest",
+        { headers: { Accept: "application/vnd.github+json" }, cache: "no-store" });
+      if (!res.ok) throw new Error("GitHub said " + res.status);
+      const rel = await res.json();
+      const asset = (rel.assets || []).find(a => /^NekcaApps-\d[\w.]*-win-x64\.zip$/.test(a.name));
+      if (!asset) throw new Error("no versioned zip in " + rel.tag_name);
+      status.innerHTML = "Downloading <strong></strong>… If it doesn't start, <a>click here</a>.";
+      status.querySelector("strong").textContent = asset.name;
+      status.querySelector("a").href = asset.browser_download_url;
+      location.href = asset.browser_download_url;
+    } catch (e) {
+      status.innerHTML = "Couldn't look up the newest version (" + String(e.message).replace(/[<>&]/g, "") +
+        "). <a>Download the newest zip</a> instead (its file name has no version number).";
+      status.querySelector("a").href = fallback;
+    }
+  })();
+</script>
+</body>
+</html>
