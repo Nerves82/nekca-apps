@@ -11,6 +11,9 @@ public interface IShortcuts
     void Remove(string name);
 }
 
+/// <summary>What's left to delete after the launcher exits, and apps that couldn't be removed because they were open.</summary>
+public sealed record LauncherRemoval(IReadOnlyList<string> DeleteAfterExit, IReadOnlyList<string> AppsStillOpen);
+
 /// <summary>Bytes downloaded so far, and the total when known.</summary>
 public readonly record struct DownloadProgress(long Done, long? Total)
 {
@@ -133,6 +136,29 @@ public sealed class Installer(InstallLayout layout, InstallState state, HttpClie
         var ok = install.Installed.Keys.ToList().Aggregate(true, (all, v) => TryRemove(app.Id, v) && all);
         if (ok) { state.Apps.Remove(app.Id); state.Save(layout); }
         return ok;
+    }
+
+    /// <summary>
+    /// Removes NEKCA Apps itself: its shortcuts and its entry in state.json, and with <paramref name="removeApps"/>
+    /// every app it installed. The running launcher's files can't be deleted while it runs, so this returns the
+    /// folders and files to delete once it has exited (all inside the install folder), and the apps that were open.
+    /// </summary>
+    public LauncherRemoval UninstallLauncher(IEnumerable<AppEntry> apps, bool removeApps)
+    {
+        var stillOpen = new List<string>();
+        if (removeApps)
+            foreach (var app in apps.Where(a => a.Id != Launcher.Entry.Id && state.Apps.ContainsKey(a.Id)))
+                if (!Uninstall(app)) stillOpen.Add(app.Name);
+        shortcuts.Remove(Launcher.Entry.Name);
+        state.Apps.Remove(Launcher.Entry.Id);
+        state.Save(layout);
+
+        // everything gone: the whole folder; otherwise just the launcher (the apps' versions and state.json stay)
+        var nothingLeft = state.Apps.Values.All(a => a.Installed.Count == 0);
+        IReadOnlyList<string> delete = nothingLeft
+            ? [layout.Root]
+            : [layout.AppFolder(Launcher.Entry.Id), layout.CacheFolder, layout.DownloadFolder, Path.Combine(layout.Root, "settings.json")];
+        return new(delete, stillOpen);
     }
 
     public void SetDesktopShortcut(AppEntry app, bool on)

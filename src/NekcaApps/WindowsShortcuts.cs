@@ -25,6 +25,9 @@ public sealed class WindowsShortcuts : IShortcuts
     {
         TryDelete(Path.Combine(StartFolder, name + ".lnk"));
         TryDelete(Path.Combine(Desktop, name + ".lnk"));
+        // the Start Menu folder goes once it's empty
+        try { if (Directory.Exists(StartFolder) && !Directory.EnumerateFileSystemEntries(StartFolder).Any()) Directory.Delete(StartFolder); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 
     private static void Write(string lnk, string exe)

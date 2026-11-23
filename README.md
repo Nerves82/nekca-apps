@@ -28,6 +28,8 @@ After a merge, the new release takes about 2–3 minutes to build. Until then th
 - Stays running by the clock (the system tray) when its window is closed, checks for updates every few hours and
   pops up a notice when one is out. Right-click the tray icon to open it, check now, start it with Windows, or quit.
 - Light and dark mode (or follow Windows), from the button at the top.
+- **Uninstall** on each app removes it and its shortcuts (its own settings and data stay). **Uninstall NEKCA Apps…**
+  in the tray menu removes the launcher, and optionally every app it installed.
 
 Everything lives under `%LOCALAPPDATA%\NEKCA Apps` (per user, no admin). Each version gets its own folder, so an update
 never breaks a copy that's open. The version in use and the one before it are kept; older ones are removed. Apps keep

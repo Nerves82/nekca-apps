@@ -66,6 +66,8 @@
                                                 Visibility="{Binding CanUpdate, Converter={StaticResource Vis}}" />
                                         <Button Content="Open" Command="{Binding OpenCommand}"
                                                 Visibility="{Binding CanOpen, Converter={StaticResource Vis}}" />
+                                        <Button Content="Uninstall" Command="{Binding UninstallCommand}" ToolTip="Remove this app and its shortcuts (its own settings and data stay)"
+                                                Visibility="{Binding CanOpen, Converter={StaticResource Vis}}" />
                                         <CheckBox Content="Desktop shortcut" IsChecked="{Binding DesktopShortcut}" VerticalAlignment="Center" Margin="8,0,0,0"
                                                   Visibility="{Binding IsInstalled, Converter={StaticResource Vis}}" />
                                     </StackPanel>
@@ -109,8 +111,6 @@
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
-                                            <Button Style="{StaticResource Link}" Content="Uninstall this app" Command="{Binding UninstallCommand}" Margin="0,8,0,0"
-                                                    HorizontalAlignment="Left" Visibility="{Binding IsInstalled, Converter={StaticResource Vis}}" />
                                         </StackPanel>
                                     </Expander>
                                 </StackPanel>

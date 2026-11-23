@@ -42,3 +42,12 @@ Decisions and rules for NEKCA Apps (the launcher). Keep this up to date.
 - WinForms is referenced only for the tray icon (`NotifyIcon`); its global usings are removed to avoid name clashes.
 - **Download page**: `docs/download/index.html` (GitHub Pages from `main` /docs) sends the browser to the newest
   versioned zip, so the downloaded file name shows the version.
+
+## Uninstalling
+
+- An app: the **Uninstall** button beside Open. Removes every version and its shortcuts; the app's own settings and
+  data (e.g. `%LOCALAPPDATA%\FuelIntake`, the client files folder) are never touched. An open version is skipped.
+- NEKCA Apps itself: tray menu › **Uninstall NEKCA Apps…** (installed launcher only). Yes = also uninstall every app;
+  No = keep the apps and their shortcuts (they just stop getting updates). Removes the launcher's shortcuts and the
+  start-with-Windows entry, then quits; a hidden `cmd` waits a few seconds and deletes the launcher's files
+  (`Installer.UninstallLauncher` lists them; always inside the install folder; the whole folder when no app is left).

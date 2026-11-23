@@ -169,3 +169,57 @@ public class InstallerTests
         Assert.Null(LauncherRules.UpdateFor(AppVersion.TryParse("0.1.6")!, releases));
     }
 }
+
+public class LauncherUninstallTests
+{
+    private static (Installer I, FakeShortcuts S, InstallLayout L) Make()
+    {
+        var layout = new InstallLayout(Fakes.TempFolder());
+        var shortcuts = new FakeShortcuts();
+        var http = new FakeHttp(req => FakeHttp.Bytes(Fakes.Zip(req.RequestUri!.Segments[^1].Split('-')[1])));
+        return (new Installer(layout, InstallState.Load(layout), new HttpClient(http), shortcuts), shortcuts, layout);
+    }
+
+    private static void InstallLauncher(Installer i)
+    {
+        var src = Fakes.TempFolder();
+        File.WriteAllText(Path.Combine(src, "NekcaApps.exe"), "fake");
+        i.InstallFromFolder(Launcher.Entry, "0.1.5", src);
+        i.Activate(Launcher.Entry, "0.1.5");
+    }
+
+    [Fact]
+    public async Task WithApps_RemovesEverything_AndTheWholeFolderAfterExit()
+    {
+        var (i, s, layout) = Make();
+        InstallLauncher(i);
+        await i.InstallAsync(Fakes.App, Fakes.Release("1.0.0"));
+        i.Activate(Fakes.App, "1.0.0");
+        Assert.Equal(2, s.Set.Count);
+
+        var r = i.UninstallLauncher([Fakes.App], removeApps: true);
+        Assert.Empty(s.Set);
+        Assert.Empty(r.AppsStillOpen);
+        Assert.Equal([layout.Root], r.DeleteAfterExit);
+        Assert.Empty(InstallState.Load(layout).Apps);
+    }
+
+    [Fact]
+    public async Task WithoutApps_KeepsTheAppsAndTheirShortcuts()
+    {
+        var (i, s, layout) = Make();
+        InstallLauncher(i);
+        await i.InstallAsync(Fakes.App, Fakes.Release("1.0.0"));
+        i.Activate(Fakes.App, "1.0.0");
+
+        var r = i.UninstallLauncher([Fakes.App], removeApps: false);
+        Assert.Equal(["Demo App"], s.Set.Keys);
+        Assert.Contains(layout.AppFolder("nekca-apps"), r.DeleteAfterExit);
+        Assert.DoesNotContain(layout.Root, r.DeleteAfterExit);
+        Assert.DoesNotContain(layout.StateFile, r.DeleteAfterExit);
+        Assert.All(r.DeleteAfterExit, p => Assert.StartsWith(layout.Root, p));
+        var state = InstallState.Load(layout);
+        Assert.False(state.Apps.ContainsKey("nekca-apps"));
+        Assert.Equal("1.0.0", state.For("demo-app").Active);
+    }
+}
