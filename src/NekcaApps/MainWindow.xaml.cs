@@ -14,6 +14,10 @@ public partial class MainWindow : Window
     private readonly InstallLayout layout = App.Current.Layout;
     private readonly InstallState state;
     private readonly Installer installer;
+
+    /// <summary>For the tray's "Uninstall NEKCA Apps": the installer and every app the list has shown.</summary>
+    public Installer Installer => installer;
+    public IReadOnlyList<AppEntry> KnownApps => cards.Select(c => c.App).ToList();
     private readonly GitHubReleaseSource releases;
     private readonly List<AppCard> cards = [];
     private readonly AppVersion running = RunningVersion();

@@ -130,6 +130,11 @@ public partial class App : Application
         startWithWindows.CheckedChanged += (_, _) => { Settings.StartWithWindows = startWithWindows.Checked; Settings.Save(Layout); SyncStartWithWindows(); };
         menu.Items.Add(startWithWindows);
         menu.Items.Add(new Forms.ToolStripSeparator());
+        var uninstall = new Forms.ToolStripMenuItem("Uninstall NEKCA Apps…");
+        uninstall.Click += (_, _) => UninstallLauncher();
+        uninstall.Enabled = LauncherRules.RunsInstalled(Layout, AppContext.BaseDirectory);
+        if (!uninstall.Enabled) uninstall.ToolTipText = "NEKCA Apps isn't installed on this computer (it's running from a download).";
+        menu.Items.Add(uninstall);
         menu.Items.Add("Quit NEKCA Apps", null, (_, _) => Quit());
 
         tray = new Forms.NotifyIcon
@@ -141,6 +146,58 @@ public partial class App : Application
         };
         tray.MouseClick += (_, e) => { if (e.Button == Forms.MouseButtons.Left) ShowWindow(); };
         tray.BalloonTipClicked += (_, _) => ShowWindow();
+    }
+
+    /// <summary>
+    /// Removes NEKCA Apps from this computer: asks whether the apps it installed go too, removes shortcuts and the
+    /// start-with-Windows entry, then quits and deletes its own files once it has exited.
+    /// </summary>
+    private void UninstallLauncher()
+    {
+        ShowWindow();
+        var answer = MessageBox.Show(window!,
+            "Uninstall NEKCA Apps from this computer?\n\n" +
+            "Yes: also uninstall every app it installed (their own settings and data stay).\n" +
+            "No: keep the apps and their shortcuts; they just won't get updates any more.\n" +
+            "Cancel: don't uninstall anything.",
+            "Uninstall NEKCA Apps", MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
+        if (answer == MessageBoxResult.Cancel) return;
+
+        LauncherRemoval removal;
+        try { removal = window!.Installer.UninstallLauncher(window.KnownApps, removeApps: answer == MessageBoxResult.Yes); }
+        catch (Exception e) when (e is InstallException or IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(window!, "NEKCA Apps couldn't be uninstalled: " + e.Message, "NEKCA Apps", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        Settings.StartWithWindows = false;
+        try { using var key = Registry.CurrentUser.CreateSubKey(RunKey); key.DeleteValue(RunName, throwOnMissingValue: false); }
+        catch (Exception e) when (e is UnauthorizedAccessException or IOException or System.Security.SecurityException) { }
+
+        var note = removal.AppsStillOpen.Count == 0 ? "" :
+            $"\n\n{string.Join(", ", removal.AppsStillOpen)} {(removal.AppsStillOpen.Count == 1 ? "was" : "were")} open, so " +
+            $"{(removal.AppsStillOpen.Count == 1 ? "its" : "their")} files stayed in {Layout.Root}. Close {(removal.AppsStillOpen.Count == 1 ? "it" : "them")} and delete that folder.";
+        MessageBox.Show(window!, "NEKCA Apps has been uninstalled." + note, "NEKCA Apps", MessageBoxButton.OK, MessageBoxImage.Information);
+        DeleteAfterExit(removal.DeleteAfterExit);
+        Quit();
+    }
+
+    /// <summary>A hidden command window waits a few seconds for this program to end, then deletes what's listed.</summary>
+    private void DeleteAfterExit(IReadOnlyList<string> paths)
+    {
+        var root = Path.GetFullPath(Layout.Root).TrimEnd('\\');
+        var steps = paths.Select(Path.GetFullPath)
+            .Where(p => p.Equals(root, StringComparison.OrdinalIgnoreCase) || p.StartsWith(root + "\\", StringComparison.OrdinalIgnoreCase)) // never outside the install folder
+            .Select(p => $"(if exist \"{p}\\*\" (rmdir /s /q \"{p}\") else (if exist \"{p}\" del /f /q \"{p}\"))");
+        var script = "ping 127.0.0.1 -n 4 >nul & " + string.Join(" & ", steps);
+        try
+        {
+            Process.Start(new ProcessStartInfo("cmd.exe", "/c " + script)
+            {
+                CreateNoWindow = true, UseShellExecute = false, WorkingDirectory = Path.GetTempPath(),
+            });
+        }
+        catch (Exception) { /* the files stay; harmless */ }
     }
 
     /// <summary>
