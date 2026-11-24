@@ -1,6 +1,7 @@
 # Builds, tests and packages NEKCA Apps on GitHub's Windows machines.
 # Every push to main (every merged pull request) publishes a GitHub Release; the launcher updates itself from these:
-#   https://github.com/Nerves82/nekca-apps/releases/latest/download/NekcaApps-win-x64.zip
+#   NekcaAppsSetup-<version>.exe  the download for people: run it and it installs itself
+#   NekcaApps-<version>-win-x64.zip  what installed launchers update from (keep this name)
 name: Build
 
 on:
@@ -51,23 +52,33 @@ jobs:
       - name: Test
         run: dotnet test NekcaApps.sln -c Release --no-build --logger "console;verbosity=normal" --logger GitHubActions
 
-      - name: Publish (self-contained, win-x64)
+      - name: Publish (one self-contained file, win-x64)
+        # One NekcaApps.exe with .NET inside (WPF's native parts unpack to the user's temp folder on first run).
         run: >
           dotnet publish src/NekcaApps/NekcaApps.csproj -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
+          -p:DebugType=none
           "-p:Version=${{ steps.ver.outputs.version }}" "-p:InformationalVersion=${{ steps.ver.outputs.info }}"
           -o "publish/NekcaApps-${{ steps.ver.outputs.version }}"
 
-      - name: Zip
+      - name: Package
         shell: pwsh
         run: |
-          # NekcaApps-0.1.7-win-x64.zip -> NekcaApps-0.1.7\NekcaApps.exe; also under a fixed name for the README link
-          Compress-Archive -Path "publish/NekcaApps-${{ steps.ver.outputs.version }}" -DestinationPath "NekcaApps-${{ steps.ver.outputs.version }}-win-x64.zip"
-          Copy-Item "NekcaApps-${{ steps.ver.outputs.version }}-win-x64.zip" "NekcaApps-win-x64.zip"
+          $v = "${{ steps.ver.outputs.version }}"
+          $files = Get-ChildItem "publish/NekcaApps-$v" -File
+          $files | Format-Table Name, Length
+          if (($files | Where-Object Name -ne "NekcaApps.exe").Count -gt 0) { throw "publish made more than NekcaApps.exe" }
+          # the setup download: the same program, named so it installs itself when run
+          Copy-Item "publish/NekcaApps-$v/NekcaApps.exe" "NekcaAppsSetup-$v.exe"
+          Copy-Item "publish/NekcaApps-$v/NekcaApps.exe" "NekcaAppsSetup.exe"
+          # the zip: what installed launchers update from (NekcaApps-0.1.7-win-x64.zip -> NekcaApps-0.1.7\NekcaApps.exe)
+          Compress-Archive -Path "publish/NekcaApps-$v" -DestinationPath "NekcaApps-$v-win-x64.zip"
+          Copy-Item "NekcaApps-$v-win-x64.zip" "NekcaApps-win-x64.zip"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: NekcaApps-${{ steps.ver.outputs.version }}-win-x64
-          path: publish/
+          name: NekcaAppsSetup-${{ steps.ver.outputs.version }}
+          path: NekcaAppsSetup-${{ steps.ver.outputs.version }}.exe
           retention-days: 30
 
       - name: Publish release (main and version tags only)
@@ -77,5 +88,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "v${{ steps.ver.outputs.version }}" }
-          gh release create $tag "NekcaApps-win-x64.zip" "NekcaApps-${{ steps.ver.outputs.version }}-win-x64.zip" `
+          gh release create $tag "NekcaAppsSetup-${{ steps.ver.outputs.version }}.exe" "NekcaAppsSetup.exe" `
+            "NekcaApps-win-x64.zip" "NekcaApps-${{ steps.ver.outputs.version }}-win-x64.zip" `
             --target "${{ github.sha }}" --title "NEKCA Apps $tag" --generate-notes --latest

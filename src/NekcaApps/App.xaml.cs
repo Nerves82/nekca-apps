@@ -17,8 +17,10 @@ public partial class App : Application
     private const string RunName = "NEKCA Apps";
     private static readonly TimeSpan CheckEvery = TimeSpan.FromHours(4);
 
+    private const string RunningName = @"Local\NekcaApps.Running";
     private Mutex? single;
     private EventWaitHandle? showSignal;
+    private EventWaitHandle? quitSignal;
     private Forms.NotifyIcon? tray;
     private Forms.ToolStripMenuItem? startWithWindows;
     private MainWindow? window;
@@ -38,21 +40,41 @@ public partial class App : Application
         };
         base.OnStartup(e);
 
-        // already running? ask it to show its window, then leave
-        single = new Mutex(true, @"Local\NekcaApps.Running", out var first);
-        showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\NekcaApps.Show");
-        if (!first)
+        // run as the setup download (NekcaAppsSetup.exe)? install or update, start the installed copy, and leave
+        var running = MainWindow.RunningVersion();
+        var runsInstalled = LauncherRules.RunsInstalled(Layout, AppContext.BaseDirectory);
+        var state = InstallState.Load(Layout);
+        state.Reconcile(Layout);
+        var installedActive = state.For(Launcher.Entry.Id).Active;
+        switch (SetupRules.Decide(Environment.ProcessPath, runsInstalled, running, installedActive))
         {
-            showSignal.Set();
+            case SetupAction.Install:
+                RunSetup(state, running);
+                return;
+            case SetupAction.OpenInstalled:
+                var exe = Path.Combine(Layout.VersionFolder(Launcher.Entry.Id, installedActive!), state.For(Launcher.Entry.Id).Installed[installedActive!]);
+                Start(exe, "");
+                Shutdown();
+                return;
+        }
+
+        // already running? ask it to show its window, then leave (or, to uninstall, ask it to quit first)
+        var uninstalling = e.Args.Contains("--uninstall", StringComparer.OrdinalIgnoreCase);
+        single = new Mutex(true, RunningName, out var first);
+        showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\NekcaApps.Show");
+        quitSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\NekcaApps.Quit");
+        if (!first && !(uninstalling && TakeOver(single, quitSignal)))
+        {
+            if (uninstalling)
+                MessageBox.Show("NEKCA Apps is running and didn't close. Quit it from its icon by the clock, then try again.", "NEKCA Apps");
+            else showSignal.Set();
             single.Dispose(); single = null;
             Shutdown();
             return;
         }
-        var listener = new Thread(() =>
-        {
-            while (showSignal.WaitOne()) Dispatcher.BeginInvoke(ShowWindow);
-        }) { IsBackground = true, Name = "show-window" };
-        listener.Start();
+        new Thread(() => { while (showSignal.WaitOne()) Dispatcher.BeginInvoke(ShowWindow); }) { IsBackground = true, Name = "show-window" }.Start();
+        new Thread(() => { if (quitSignal.WaitOne()) Dispatcher.BeginInvoke(Quit); }) { IsBackground = true, Name = "quit-window" }.Start();
+        if (runsInstalled) RegisterInstalledApp(running);
 
         Settings = LauncherSettings.Load(Layout);
         Theme.Apply(Settings.Theme);
@@ -61,9 +83,105 @@ public partial class App : Application
         SyncStartWithWindows();
 
         window = new MainWindow();
+        if (uninstalling)
+        {
+            _ = UninstallLauncherAsync(fromWindowsSettings: true);
+            return;
+        }
+        if (e.Args.Contains("--installed", StringComparer.OrdinalIgnoreCase))
+            window.ShowWelcome("NEKCA Apps is installed. Open it any time from the Start Menu or the desktop shortcut. " +
+                               "Closing this window keeps it running by the clock, checking for updates.");
+        if (e.Args.Contains("--updated", StringComparer.OrdinalIgnoreCase))
+            window.ShowWelcome($"NEKCA Apps was updated to version {running}.");
         var startHidden = e.Args.Contains("--tray", StringComparer.OrdinalIgnoreCase);
         if (!startHidden) window.Show();
         window.StartChecking(CheckEvery);
+    }
+
+    // ---- setup
+
+    /// <summary>
+    /// The setup download: copy this program into the install folder, make the shortcuts, close an older copy
+    /// that's running, and start the installed one.
+    /// </summary>
+    private void RunSetup(InstallState state, AppVersion running)
+    {
+        var installer = new Installer(Layout, state, MainWindow.Http, new WindowsShortcuts());
+        var firstInstall = state.For(Launcher.Entry.Id).Active is null;
+        try
+        {
+            InstallSelf(installer, running);
+            if (firstInstall) state.For(Launcher.Entry.Id).DesktopShortcut = true;
+            installer.Activate(Launcher.Entry, running.ToString());
+        }
+        catch (Exception ex) when (ex is InstallException or IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
+        {
+            MessageBox.Show("NEKCA Apps couldn't be installed: " + ex.Message, "NEKCA Apps", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Shutdown();
+            return;
+        }
+
+        // an older copy running by the clock: ask it to quit so the new one can start
+        using (var other = new Mutex(false, RunningName))
+        using (var quit = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\NekcaApps.Quit"))
+        {
+            if (!TakeOver(other, quit))
+            {
+                MessageBox.Show($"NEKCA Apps {running} is installed. The older copy that's running didn't close: " +
+                                "right-click its icon by the clock, choose Quit NEKCA Apps, then open NEKCA Apps from the Start Menu.",
+                    "NEKCA Apps", MessageBoxButton.OK, MessageBoxImage.Information);
+                Shutdown();
+                return;
+            }
+            other.ReleaseMutex();
+        }
+        Start(installer.ExePath(Launcher.Entry.Id, running.ToString())!, firstInstall ? "--installed" : "--updated");
+        Shutdown();
+    }
+
+    /// <summary>Installs the running program: just the one file when it's a single-file build, else its folder.</summary>
+    public static void InstallSelf(Installer installer, AppVersion running)
+    {
+        var singleFile = string.IsNullOrEmpty(typeof(App).Assembly.Location);
+        if (singleFile) installer.InstallFromFile(Launcher.Entry, running.ToString(), Environment.ProcessPath!);
+        else installer.InstallFromFolder(Launcher.Entry, running.ToString(), AppContext.BaseDirectory.TrimEnd('\\', '/'));
+    }
+
+    /// <summary>
+    /// Takes the one-copy lock from a running copy by asking it to quit (newer copies listen; very old ones don't).
+    /// True once this process holds the lock.
+    /// </summary>
+    private static bool TakeOver(Mutex runningLock, EventWaitHandle quit)
+    {
+        try
+        {
+            if (runningLock.WaitOne(0)) return true;
+            quit.Set();
+            return runningLock.WaitOne(TimeSpan.FromSeconds(15));
+        }
+        catch (AbandonedMutexException) { return true; } // it exited without letting go: the lock is ours now
+    }
+
+    private static void Start(string exe, string args) =>
+        Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe) });
+
+    /// <summary>
+    /// Lists NEKCA Apps in Windows' Settings › Apps › Installed apps (per user, no admin), pointing at this copy;
+    /// rewritten at every start because each launcher version lives in its own folder.
+    /// </summary>
+    private void RegisterInstalledApp(AppVersion running)
+    {
+        try
+        {
+            var exe = Environment.ProcessPath!;
+            long kb = 0;
+            try { kb = new DirectoryInfo(AppContext.BaseDirectory).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length) / 1024; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            using var key = Registry.CurrentUser.CreateSubKey(SetupRules.InstalledAppsKey);
+            foreach (var (name, value) in SetupRules.InstalledAppsEntry(exe, running, Layout.Root, kb))
+                key.SetValue(name, value, value is int ? RegistryValueKind.DWord : RegistryValueKind.String);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or System.Security.SecurityException) { }
     }
 
     public void SetTheme(AppTheme mode)
@@ -131,7 +249,7 @@ public partial class App : Application
         menu.Items.Add(startWithWindows);
         menu.Items.Add(new Forms.ToolStripSeparator());
         var uninstall = new Forms.ToolStripMenuItem("Uninstall NEKCA Apps…");
-        uninstall.Click += (_, _) => UninstallLauncher();
+        uninstall.Click += async (_, _) => await UninstallLauncherAsync(fromWindowsSettings: false);
         uninstall.Enabled = LauncherRules.RunsInstalled(Layout, AppContext.BaseDirectory);
         if (!uninstall.Enabled) uninstall.ToolTipText = "NEKCA Apps isn't installed on this computer (it's running from a download).";
         menu.Items.Add(uninstall);
@@ -152,32 +270,47 @@ public partial class App : Application
     /// Removes NEKCA Apps from this computer: asks whether the apps it installed go too, removes shortcuts and the
     /// start-with-Windows entry, then quits and deletes its own files once it has exited.
     /// </summary>
-    private void UninstallLauncher()
+    private async Task UninstallLauncherAsync(bool fromWindowsSettings)
     {
-        ShowWindow();
-        var answer = MessageBox.Show(window!,
+        if (!fromWindowsSettings) ShowWindow();
+        MessageBoxResult Say(string text, string title, MessageBoxButton buttons, MessageBoxImage image, MessageBoxResult def = MessageBoxResult.None) =>
+            window is { IsVisible: true } w ? MessageBox.Show(w, text, title, buttons, image, def) : MessageBox.Show(text, title, buttons, image, def);
+
+        var answer = Say(
             "Uninstall NEKCA Apps from this computer?\n\n" +
             "Yes: also uninstall every app it installed (their own settings and data stay).\n" +
             "No: keep the apps and their shortcuts; they just won't get updates any more.\n" +
             "Cancel: don't uninstall anything.",
             "Uninstall NEKCA Apps", MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
-        if (answer == MessageBoxResult.Cancel) return;
+        if (answer == MessageBoxResult.Cancel)
+        {
+            if (fromWindowsSettings) Quit();
+            return;
+        }
 
+        // every app it may have installed: the list on screen plus the app list (online, saved or built in)
+        var catalog = (await new CatalogSource(MainWindow.Http, Layout.CacheFolder).GetAsync()).Catalog.Apps;
+        var apps = window!.KnownApps.Concat(catalog).DistinctBy(a => a.Id).ToList();
         LauncherRemoval removal;
-        try { removal = window!.Installer.UninstallLauncher(window.KnownApps, removeApps: answer == MessageBoxResult.Yes); }
+        try { removal = window.Installer.UninstallLauncher(apps, removeApps: answer == MessageBoxResult.Yes); }
         catch (Exception e) when (e is InstallException or IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show(window!, "NEKCA Apps couldn't be uninstalled: " + e.Message, "NEKCA Apps", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Say("NEKCA Apps couldn't be uninstalled: " + e.Message, "NEKCA Apps", MessageBoxButton.OK, MessageBoxImage.Warning);
+            if (fromWindowsSettings) Quit();
             return;
         }
         Settings.StartWithWindows = false;
-        try { using var key = Registry.CurrentUser.CreateSubKey(RunKey); key.DeleteValue(RunName, throwOnMissingValue: false); }
+        try
+        {
+            using (var key = Registry.CurrentUser.CreateSubKey(RunKey)) key.DeleteValue(RunName, throwOnMissingValue: false);
+            Registry.CurrentUser.DeleteSubKeyTree(SetupRules.InstalledAppsKey, throwOnMissingSubKey: false);
+        }
         catch (Exception e) when (e is UnauthorizedAccessException or IOException or System.Security.SecurityException) { }
 
         var note = removal.AppsStillOpen.Count == 0 ? "" :
             $"\n\n{string.Join(", ", removal.AppsStillOpen)} {(removal.AppsStillOpen.Count == 1 ? "was" : "were")} open, so " +
             $"{(removal.AppsStillOpen.Count == 1 ? "its" : "their")} files stayed in {Layout.Root}. Close {(removal.AppsStillOpen.Count == 1 ? "it" : "them")} and delete that folder.";
-        MessageBox.Show(window!, "NEKCA Apps has been uninstalled." + note, "NEKCA Apps", MessageBoxButton.OK, MessageBoxImage.Information);
+        Say("NEKCA Apps has been uninstalled." + note, "NEKCA Apps", MessageBoxButton.OK, MessageBoxImage.Information);
         DeleteAfterExit(removal.DeleteAfterExit);
         Quit();
     }

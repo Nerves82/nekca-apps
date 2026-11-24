@@ -18,23 +18,23 @@
 <main>
   <h1>NEKCA Apps</h1>
   <p id="status">Finding the newest version…</p>
-  <p class="note">Unzip it, run <strong>NekcaApps.exe</strong> and click <strong>Install NEKCA Apps</strong>. If Windows says "unknown publisher", choose
+  <p class="note">Open the downloaded <strong>NekcaAppsSetup</strong> file: it installs NEKCA Apps and opens it (no admin needed). If Windows says "unknown publisher" or "Windows protected your PC", choose
     <strong>More info → Run anyway</strong>.</p>
   <p class="note"><a href="https://github.com/Nerves82/nekca-apps/releases/latest">Latest release page</a> ·
     <a href="https://github.com/Nerves82/nekca-apps/releases">All releases</a></p>
 </main>
 <script>
-  // Sends the browser to the newest release's versioned zip (NekcaApps-<version>-win-x64.zip),
+  // Sends the browser to the newest release's setup program (NekcaAppsSetup-<version>.exe),
   // so the downloaded file name shows the version.
   (async () => {
     const status = document.getElementById("status");
-    const fallback = "https://github.com/Nerves82/nekca-apps/releases/latest/download/NekcaApps-win-x64.zip";
+    const fallback = "https://github.com/Nerves82/nekca-apps/releases/latest/download/NekcaAppsSetup.exe";
     try {
       const res = await fetch("https://api.github.com/repos/Nerves82/nekca-apps/releases/latest",
         { headers: { Accept: "application/vnd.github+json" }, cache: "no-store" });
       if (!res.ok) throw new Error("GitHub said " + res.status);
       const rel = await res.json();
-      const asset = (rel.assets || []).find(a => /^NekcaApps-\d[\w.]*-win-x64\.zip$/.test(a.name));
+      const asset = (rel.assets || []).find(a => /^NekcaAppsSetup-\d[\w.]*\.exe$/.test(a.name));
       if (!asset) throw new Error("no versioned zip in " + rel.tag_name);
       status.innerHTML = "Downloading <strong></strong>… If it doesn't start, <a>click here</a>.";
       status.querySelector("strong").textContent = asset.name;
@@ -42,7 +42,7 @@
       location.href = asset.browser_download_url;
     } catch (e) {
       status.innerHTML = "Couldn't look up the newest version (" + String(e.message).replace(/[<>&]/g, "") +
-        "). <a>Download the newest zip</a> instead (its file name has no version number).";
+        "). <a>Download the newest setup</a> instead (its file name has no version number).";
       status.querySelector("a").href = fallback;
     }
   })();
