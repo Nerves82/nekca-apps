@@ -68,3 +68,12 @@ Decisions and rules for NEKCA Apps (the launcher). Keep this up to date.
   running copy to quit, then shows the same Yes/No/Cancel as the tray's Uninstall; uninstalling removes the entry.
 - Single-file WPF unpacks its native parts to `%TEMP%\.net` on first run. If a laptop policy ever blocks that, the
   fallback is publishing as a folder again (drop `PublishSingleFile` in build.yml); everything else works either way.
+
+## Locked files while installing
+
+- Windows Defender scans new files right after they're written and holds them open briefly, so renaming or deleting
+  a just-written folder can fail with "Access denied". Installs therefore unpack straight into the version folder
+  (no `.partial` folder renamed afterwards); a version only counts as installed once state.json records it.
+- File steps go through `IoRetry.Run` (about 9 seconds of retries). The error people see names the virus scanner
+  and says to try again in a minute.
+- `.partial` / `.removing-…` leftovers (including from launchers before this) are cleaned at the next install.

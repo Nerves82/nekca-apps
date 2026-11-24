@@ -32,39 +32,48 @@ public sealed class Installer(InstallLayout layout, InstallState state, HttpClie
     public InstallLayout Layout => layout;
     public InstallState State => state;
 
-    /// <summary>Downloads and unpacks a release (if it isn't installed yet). Doesn't change the version in use.</summary>
+    /// <summary>
+    /// Downloads and unpacks a release (if it isn't installed yet). Doesn't change the version in use.
+    /// Unpacks straight into the version's folder; the version only counts as installed (state.json) once every file
+    /// is there. No folder is renamed after writing: Windows refuses that while the virus scanner is still reading
+    /// the new files, which it does right after they're written.
+    /// </summary>
     public async Task InstallAsync(AppEntry app, Release release, IProgress<DownloadProgress>? progress = null, CancellationToken ct = default)
     {
         var install = state.For(app.Id);
         var version = release.Version.ToString();
         if (install.Installed.TryGetValue(version, out var exe) && File.Exists(Path.Combine(layout.VersionFolder(app.Id, version), exe))) return;
 
+        CleanUpLeftovers(app.Id);
         Directory.CreateDirectory(layout.DownloadFolder);
         var zip = Path.Combine(layout.DownloadFolder, $"{app.Id}-{version}-{Guid.NewGuid():N}.zip");
         var target = layout.VersionFolder(app.Id, version);
-        var partial = target + ".partial";
+        var done = false;
         try
         {
             await DownloadAsync(release.Asset, zip, progress, ct);
-            if (Directory.Exists(partial)) Directory.Delete(partial, recursive: true);
-            try { ZipFile.ExtractToDirectory(zip, partial); }
-            catch (InvalidDataException e) { throw new InstallException("The download isn't a usable zip file. Try again.", e); }
-            var found = Directory.EnumerateFiles(partial, app.Exe, SearchOption.AllDirectories)
-                .OrderBy(p => p.Count(c => c == Path.DirectorySeparatorChar)).FirstOrDefault()
-                ?? throw new InstallException($"{app.Exe} isn't in the download for version {version}.");
-            if (Directory.Exists(target)) Directory.Delete(target, recursive: true);
-            Directory.Move(partial, target);
-            install.Installed[version] = Path.GetRelativePath(partial, found);
+            var relative = await Task.Run(() =>
+            {
+                StartFresh(target);
+                try { IoRetry.Run(() => ZipFile.ExtractToDirectory(zip, target, overwriteFiles: true)); }
+                catch (InvalidDataException e) { throw new InstallException("The download isn't a usable zip file. Try again.", e); }
+                var found = Directory.EnumerateFiles(target, app.Exe, SearchOption.AllDirectories)
+                    .OrderBy(p => p.Count(c => c == Path.DirectorySeparatorChar)).FirstOrDefault()
+                    ?? throw new InstallException($"{app.Exe} isn't in the download for version {version}.");
+                return Path.GetRelativePath(target, found);
+            }, ct);
+            install.Installed[version] = relative;
             state.Save(layout);
+            done = true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            throw new InstallException("Windows couldn't write the app's files: " + e.Message, e);
+            throw new InstallException(Locked("write the app's files", e), e);
         }
         finally
         {
             TryDelete(zip);
-            if (Directory.Exists(partial)) try { Directory.Delete(partial, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            if (!done) TryDeleteFolder(target);
         }
     }
 
@@ -77,20 +86,19 @@ public sealed class Installer(InstallLayout layout, InstallState state, HttpClie
         var install = state.For(app.Id);
         if (install.Installed.ContainsKey(version) && ExePath(app.Id, version) is { } have && File.Exists(have)) return;
         if (!File.Exists(Path.Combine(sourceFolder, app.Exe))) throw new InstallException($"{app.Exe} isn't in {sourceFolder}.");
+        CleanUpLeftovers(app.Id);
         var target = layout.VersionFolder(app.Id, version);
-        var partial = target + ".partial";
         try
         {
-            if (Directory.Exists(partial)) Directory.Delete(partial, recursive: true);
-            CopyFolder(sourceFolder, partial);
-            if (Directory.Exists(target)) Directory.Delete(target, recursive: true);
-            Directory.Move(partial, target);
+            StartFresh(target);
+            CopyFolder(sourceFolder, target);
             install.Installed[version] = app.Exe;
             state.Save(layout);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            throw new InstallException("Windows couldn't copy the files: " + e.Message, e);
+            TryDeleteFolder(target);
+            throw new InstallException(Locked("copy the files", e), e);
         }
     }
 
@@ -103,28 +111,64 @@ public sealed class Installer(InstallLayout layout, InstallState state, HttpClie
         var install = state.For(app.Id);
         if (install.Installed.ContainsKey(version) && ExePath(app.Id, version) is { } have && File.Exists(have)) return;
         if (!File.Exists(exeFile)) throw new InstallException($"{exeFile} isn't there any more.");
+        CleanUpLeftovers(app.Id);
         var target = layout.VersionFolder(app.Id, version);
-        var partial = target + ".partial";
         try
         {
-            if (Directory.Exists(partial)) Directory.Delete(partial, recursive: true);
-            Directory.CreateDirectory(partial);
-            File.Copy(exeFile, Path.Combine(partial, app.Exe));
-            if (Directory.Exists(target)) Directory.Delete(target, recursive: true);
-            Directory.Move(partial, target);
+            StartFresh(target);
+            IoRetry.Run(() => File.Copy(exeFile, Path.Combine(target, app.Exe), overwrite: true));
             install.Installed[version] = app.Exe;
             state.Save(layout);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            throw new InstallException("Windows couldn't copy the program: " + e.Message, e);
+            TryDeleteFolder(target);
+            throw new InstallException(Locked("copy the program", e), e);
         }
+    }
+
+    /// <summary>
+    /// Removes what an interrupted or older install left behind in the app's folder: "x.partial" and "x.removing-…"
+    /// folders. (Version folders are never removed here, even unlisted ones, in case state.json was damaged.)
+    /// Anything still locked is left for next time.
+    /// </summary>
+    public void CleanUpLeftovers(string appId)
+    {
+        var folder = layout.AppFolder(appId);
+        if (!Directory.Exists(folder)) return;
+        foreach (var dir in Directory.EnumerateDirectories(folder))
+        {
+            var name = Path.GetFileName(dir);
+            if (name.EndsWith(".partial", StringComparison.OrdinalIgnoreCase) || name.Contains(".removing-", StringComparison.OrdinalIgnoreCase))
+                TryDeleteFolder(dir, attempts: 1);
+        }
+    }
+
+    /// <summary>An empty folder to install into (an earlier failed try's files are cleared, or overwritten if locked).</summary>
+    private static void StartFresh(string folder)
+    {
+        if (Directory.Exists(folder))
+        {
+            try { IoRetry.Run(() => Directory.Delete(folder, recursive: true)); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* overwrite what's there instead */ }
+        }
+        IoRetry.Run(() => Directory.CreateDirectory(folder));
+    }
+
+    private static string Locked(string what, Exception e) =>
+        $"Windows couldn't {what}: another program, usually the virus scanner checking the new files, was using them. " +
+        $"Wait a minute and try again. ({e.Message})";
+
+    private static void TryDeleteFolder(string folder, int attempts = IoRetry.DefaultAttempts)
+    {
+        try { if (Directory.Exists(folder)) IoRetry.Run(() => Directory.Delete(folder, recursive: true), attempts); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 
     private static void CopyFolder(string from, string to)
     {
         Directory.CreateDirectory(to);
-        foreach (var f in Directory.EnumerateFiles(from)) File.Copy(f, Path.Combine(to, Path.GetFileName(f)));
+        foreach (var f in Directory.EnumerateFiles(from)) IoRetry.Run(() => File.Copy(f, Path.Combine(to, Path.GetFileName(f)), overwrite: true));
         foreach (var d in Directory.EnumerateDirectories(from)) CopyFolder(d, Path.Combine(to, Path.GetFileName(d)));
     }
 
@@ -207,10 +251,11 @@ public sealed class Installer(InstallLayout layout, InstallState state, HttpClie
         {
             if (Directory.Exists(folder))
             {
-                // rename first: if a file is open the rename fails and nothing is half-deleted
+                // rename first: if the program is open the rename fails and nothing is half-deleted
+                // (retried, since the virus scanner can hold files for a moment too)
                 var doomed = folder + ".removing-" + Guid.NewGuid().ToString("N")[..6];
-                Directory.Move(folder, doomed);
-                Directory.Delete(doomed, recursive: true);
+                IoRetry.Run(() => Directory.Move(folder, doomed), attempts: 4);
+                TryDeleteFolder(doomed); // anything left is cleaned up next time
             }
             state.For(appId).Installed.Remove(version);
             state.Save(layout);
