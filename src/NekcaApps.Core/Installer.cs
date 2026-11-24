@@ -113,10 +113,18 @@ public sealed class Installer(InstallLayout layout, InstallState state, HttpClie
         if (!File.Exists(exeFile)) throw new InstallException($"{exeFile} isn't there any more.");
         CleanUpLeftovers(app.Id);
         var target = layout.VersionFolder(app.Id, version);
+        var dest = Path.Combine(target, app.Exe);
+        if (SameFile(exeFile, dest))
+        {
+            // already there (another setup run copied it, and it may be running): just record it
+            install.Installed[version] = app.Exe;
+            state.Save(layout);
+            return;
+        }
         try
         {
             StartFresh(target);
-            IoRetry.Run(() => File.Copy(exeFile, Path.Combine(target, app.Exe), overwrite: true));
+            IoRetry.Run(() => File.Copy(exeFile, dest, overwrite: true));
             install.Installed[version] = app.Exe;
             state.Save(layout);
         }
@@ -125,6 +133,20 @@ public sealed class Installer(InstallLayout layout, InstallState state, HttpClie
             TryDeleteFolder(target);
             throw new InstallException(Locked("copy the program", e), e);
         }
+    }
+
+    /// <summary>True when both files exist with the same contents.</summary>
+    private static bool SameFile(string a, string b)
+    {
+        try
+        {
+            var fa = new FileInfo(a); var fb = new FileInfo(b);
+            if (!fa.Exists || !fb.Exists || fa.Length != fb.Length) return false;
+            using var sa = new FileStream(a, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var sb = new FileStream(b, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            return System.Security.Cryptography.SHA256.HashData(sa).AsSpan().SequenceEqual(System.Security.Cryptography.SHA256.HashData(sb));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
     }
 
     /// <summary>

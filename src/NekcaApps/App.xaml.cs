@@ -19,6 +19,7 @@ public partial class App : Application
 
     private const string RunningName = @"Local\NekcaApps.Running";
     private Mutex? single;
+    private Mutex? setupLock;
     private EventWaitHandle? showSignal;
     private EventWaitHandle? quitSignal;
     private Forms.NotifyIcon? tray;
@@ -43,6 +44,13 @@ public partial class App : Application
         // run as the setup download (NekcaAppsSetup.exe)? install or update, start the installed copy, and leave
         var running = NekcaApps.MainWindow.RunningVersion();
         var runsInstalled = LauncherRules.RunsInstalled(Layout, AppContext.BaseDirectory);
+        // one setup at a time: a second click on the setup file waits for the first, then finds it installed
+        // and just opens it (before, both copied at once and the second hit the program the first had started)
+        if (!runsInstalled && SetupRules.IsSetupFile(Environment.ProcessPath))
+        {
+            setupLock = new Mutex(false, @"Local\NekcaApps.Setup");
+            try { setupLock.WaitOne(TimeSpan.FromMinutes(2)); } catch (AbandonedMutexException) { }
+        }
         var state = InstallState.Load(Layout);
         state.Reconcile(Layout);
         var installedActive = state.For(Launcher.Entry.Id).Active;
@@ -355,6 +363,8 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        try { setupLock?.ReleaseMutex(); } catch (ApplicationException) { } // not held (timed out)
+        setupLock?.Dispose();
         ReleaseForRestart();
         base.OnExit(e);
     }
