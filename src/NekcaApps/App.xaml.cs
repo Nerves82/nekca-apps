@@ -41,7 +41,7 @@ public partial class App : Application
         base.OnStartup(e);
 
         // run as the setup download (NekcaAppsSetup.exe)? install or update, start the installed copy, and leave
-        var running = MainWindow.RunningVersion();
+        var running = NekcaApps.MainWindow.RunningVersion();
         var runsInstalled = LauncherRules.RunsInstalled(Layout, AppContext.BaseDirectory);
         var state = InstallState.Load(Layout);
         state.Reconcile(Layout);
@@ -106,7 +106,7 @@ public partial class App : Application
     /// </summary>
     private void RunSetup(InstallState state, AppVersion running)
     {
-        var installer = new Installer(Layout, state, MainWindow.Http, new WindowsShortcuts());
+        var installer = new Installer(Layout, state, NekcaApps.MainWindow.Http, new WindowsShortcuts());
         var firstInstall = state.For(Launcher.Entry.Id).Active is null;
         try
         {
@@ -289,7 +289,7 @@ public partial class App : Application
         }
 
         // every app it may have installed: the list on screen plus the app list (online, saved or built in)
-        var catalog = (await new CatalogSource(MainWindow.Http, Layout.CacheFolder).GetAsync()).Catalog.Apps;
+        var catalog = (await new CatalogSource(NekcaApps.MainWindow.Http, Layout.CacheFolder).GetAsync()).Catalog.Apps;
         var apps = window!.KnownApps.Concat(catalog).DistinctBy(a => a.Id).ToList();
         LauncherRemoval removal;
         try { removal = window.Installer.UninstallLauncher(apps, removeApps: answer == MessageBoxResult.Yes); }
