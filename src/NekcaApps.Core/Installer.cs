@@ -94,6 +94,33 @@ public sealed class Installer(InstallLayout layout, InstallState state, HttpClie
         }
     }
 
+    /// <summary>
+    /// Installs a version that is one self-contained program file (the setup download, NekcaAppsSetup-x.exe): copies
+    /// just that file, named <see cref="AppEntry.Exe"/>. Does nothing when that version is installed.
+    /// </summary>
+    public void InstallFromFile(AppEntry app, string version, string exeFile)
+    {
+        var install = state.For(app.Id);
+        if (install.Installed.ContainsKey(version) && ExePath(app.Id, version) is { } have && File.Exists(have)) return;
+        if (!File.Exists(exeFile)) throw new InstallException($"{exeFile} isn't there any more.");
+        var target = layout.VersionFolder(app.Id, version);
+        var partial = target + ".partial";
+        try
+        {
+            if (Directory.Exists(partial)) Directory.Delete(partial, recursive: true);
+            Directory.CreateDirectory(partial);
+            File.Copy(exeFile, Path.Combine(partial, app.Exe));
+            if (Directory.Exists(target)) Directory.Delete(target, recursive: true);
+            Directory.Move(partial, target);
+            install.Installed[version] = app.Exe;
+            state.Save(layout);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new InstallException("Windows couldn't copy the program: " + e.Message, e);
+        }
+    }
+
     private static void CopyFolder(string from, string to)
     {
         Directory.CreateDirectory(to);

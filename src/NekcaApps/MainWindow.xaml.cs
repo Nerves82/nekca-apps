@@ -9,7 +9,7 @@ namespace NekcaApps;
 
 public partial class MainWindow : Window
 {
-    private static readonly HttpClient Http = CreateHttp();
+    internal static readonly HttpClient Http = CreateHttp();
 
     private readonly InstallLayout layout = App.Current.Layout;
     private readonly InstallState state;
@@ -72,6 +72,15 @@ public partial class MainWindow : Window
         if (announce && !IsVisible) App.Current.AnnounceUpdates(fresh);
         if (available.Count == 0) App.Current.ClearUpdateFlag();
     }
+
+    /// <summary>A green note at the top of the window ("NEKCA Apps is installed…").</summary>
+    public void ShowWelcome(string text)
+    {
+        WelcomeText.Text = text;
+        WelcomeBanner.Visibility = Visibility.Visible;
+    }
+
+    private void OnDismissWelcome(object sender, RoutedEventArgs e) => WelcomeBanner.Visibility = Visibility.Collapsed;
 
     // ---- theme
 
@@ -257,10 +266,10 @@ public partial class MainWindow : Window
     {
         try
         {
-            installer.InstallFromFolder(Launcher.Entry, running.ToString(), AppContext.BaseDirectory.TrimEnd('\\', '/'));
+            App.InstallSelf(installer, running);
             state.For(Launcher.Entry.Id).DesktopShortcut = true;
             installer.Activate(Launcher.Entry, running.ToString());
-            StartAndClose(installer.ExePath(Launcher.Entry.Id, running.ToString())!);
+            StartAndClose(installer.ExePath(Launcher.Entry.Id, running.ToString())!, "--installed");
         }
         catch (Exception ex) when (ex is InstallException or IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
         {
@@ -277,7 +286,7 @@ public partial class MainWindow : Window
         {
             await installer.InstallAsync(Launcher.Entry, update);
             installer.Activate(Launcher.Entry, update.Version.ToString());
-            StartAndClose(installer.ExePath(Launcher.Entry.Id, update.Version.ToString())!);
+            StartAndClose(installer.ExePath(Launcher.Entry.Id, update.Version.ToString())!, "--updated");
         }
         catch (InstallException ex)
         {
@@ -286,15 +295,15 @@ public partial class MainWindow : Window
         }
     }
 
-    private static void StartAndClose(string exe)
+    private static void StartAndClose(string exe, string args)
     {
         // let go of the one-instance lock first, or the new copy would just show this window and quit
         App.Current.ReleaseForRestart();
-        Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe) });
+        Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe) });
         App.Current.Quit();
     }
 
-    private static AppVersion RunningVersion()
+    internal static AppVersion RunningVersion()
     {
         var info = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         return AppVersion.TryParse(info) ?? new AppVersion(Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 1, 0));

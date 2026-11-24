@@ -7,14 +7,16 @@ One place to install, update and roll back NEKCA's desktop apps. No admin rights
 **Newest version**
 [![Latest release](https://img.shields.io/github/v/release/Nerves82/nekca-apps?label=latest&cacheSeconds=60)](https://github.com/Nerves82/nekca-apps/releases/latest):
 **[Download NEKCA Apps](https://nerves82.github.io/nekca-apps/download/)**
-(the file is named with its version, e.g. `NekcaApps-0.1.4-win-x64.zip`)
+(the file is named with its version, e.g. `NekcaAppsSetup-0.1.12.exe`)
 · [All releases](https://github.com/Nerves82/nekca-apps/releases)
 
 Backup link with a fixed file name (no version in it):
-[NekcaApps-win-x64.zip](https://github.com/Nerves82/nekca-apps/releases/latest/download/NekcaApps-win-x64.zip)
+[NekcaAppsSetup.exe](https://github.com/Nerves82/nekca-apps/releases/latest/download/NekcaAppsSetup.exe)
 
-Unzip it, run `NekcaApps.exe` and click **Install NEKCA Apps**. Windows may say "unknown publisher" the first time:
-choose **More info → Run anyway**. After that, open it from the Start Menu (or the desktop shortcut); it updates itself.
+Run the downloaded `NekcaAppsSetup` file: it installs NEKCA Apps for you (no admin needed), adds Start Menu and desktop
+shortcuts, and opens it. Windows may say "unknown publisher" or "Windows protected your PC" the first time: choose
+**More info → Run anyway**. Running a newer setup later updates it; it also updates itself. To remove it: Windows
+Settings › Apps › Installed apps › NEKCA Apps › Uninstall, or **Uninstall NEKCA Apps…** in its tray menu.
 
 After a merge, the new release takes about 2–3 minutes to build. Until then the links still give the previous version.
 

@@ -51,3 +51,20 @@ Decisions and rules for NEKCA Apps (the launcher). Keep this up to date.
   No = keep the apps and their shortcuts (they just stop getting updates). Removes the launcher's shortcuts and the
   start-with-Windows entry, then quits; a hidden `cmd` waits a few seconds and deletes the launcher's files
   (`Installer.UninstallLauncher` lists them; always inside the install folder; the whole folder when no app is left).
+
+## Setup download
+
+- The launcher is published as **one self-contained file**. Each release has `NekcaAppsSetup-<v>.exe` (+ fixed-name
+  `NekcaAppsSetup.exe`) for people, and the zip `NekcaApps-<v>-win-x64.zip` (one `NekcaApps.exe` inside) that installed
+  launchers update from. Don't rename the zip: older launchers look for exactly that name.
+- **It's the same program.** Started from a file named `NekcaAppsSetup*` that isn't in the install folder
+  (`SetupRules.Decide`): when no copy or an older one is installed, it copies itself in as `NekcaApps.exe`, makes the
+  shortcuts (desktop on first install), asks a running copy to quit (`Local\NekcaApps.Quit`; launchers before this
+  don't listen, so then it says to quit from the tray), and starts the installed copy with `--installed`/`--updated`
+  (a green note). When the same or a newer version is installed it just opens that.
+- An unzipped `NekcaApps.exe` (not named Setup) still runs with the "Install NEKCA Apps" banner.
+- **Installed apps entry**: `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\NekcaApps` (per user, no admin),
+  rewritten at every start of the installed launcher. Its Uninstall runs `NekcaApps.exe --uninstall`, which asks the
+  running copy to quit, then shows the same Yes/No/Cancel as the tray's Uninstall; uninstalling removes the entry.
+- Single-file WPF unpacks its native parts to `%TEMP%\.net` on first run. If a laptop policy ever blocks that, the
+  fallback is publishing as a folder again (drop `PublishSingleFile` in build.yml); everything else works either way.
