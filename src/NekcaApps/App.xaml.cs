@@ -142,7 +142,9 @@ public partial class App : Application
     /// <summary>Installs the running program: just the one file when it's a single-file build, else its folder.</summary>
     public static void InstallSelf(Installer installer, AppVersion running)
     {
+#pragma warning disable IL3000 // empty Location is exactly how a single-file build is recognised
         var singleFile = string.IsNullOrEmpty(typeof(App).Assembly.Location);
+#pragma warning restore IL3000
         if (singleFile) installer.InstallFromFile(Launcher.Entry, running.ToString(), Environment.ProcessPath!);
         else installer.InstallFromFolder(Launcher.Entry, running.ToString(), AppContext.BaseDirectory.TrimEnd('\\', '/'));
     }
