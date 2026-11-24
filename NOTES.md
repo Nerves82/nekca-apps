@@ -77,3 +77,6 @@ Decisions and rules for NEKCA Apps (the launcher). Keep this up to date.
 - File steps go through `IoRetry.Run` (about 9 seconds of retries). The error people see names the virus scanner
   and says to try again in a minute.
 - `.partial` / `.removing-…` leftovers (including from launchers before this) are cleaned at the next install.
+- **One setup at a time** (`Local\NekcaApps.Setup`): a second click on the setup file waits for the first, then sees
+  that version installed and just opens it. `InstallFromFile` also skips copying when the identical program is
+  already in the version folder (it may be running), so it can't fail with "being used by another process".

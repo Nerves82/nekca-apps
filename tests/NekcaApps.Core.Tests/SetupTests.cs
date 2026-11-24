@@ -45,3 +45,24 @@ public class SetupTests
         Assert.Equal(70_000, e["EstimatedSize"]);
     }
 }
+
+public class SetupTwiceTests
+{
+    [Fact]
+    public void InstallFromFile_SameProgramAlreadyThere_JustRecordsIt()
+    {
+        var layout = new InstallLayout(Fakes.TempFolder());
+        var setup = Path.Combine(Fakes.TempFolder(), "NekcaAppsSetup-0.1.5.exe");
+        File.WriteAllText(setup, "fake program 0.1.5");
+        // the first setup run copied it but hadn't recorded it yet when the second looked
+        var folder = layout.VersionFolder("nekca-apps", "0.1.5");
+        Directory.CreateDirectory(folder);
+        File.Copy(setup, Path.Combine(folder, "NekcaApps.exe"));
+        var stamp = File.GetLastWriteTimeUtc(Path.Combine(folder, "NekcaApps.exe"));
+
+        var i = new Installer(layout, InstallState.Load(layout), new HttpClient(new FakeHttp(_ => throw new InvalidOperationException())), new FakeShortcuts());
+        i.InstallFromFile(Launcher.Entry, "0.1.5", setup);
+        Assert.Equal(Path.Combine(folder, "NekcaApps.exe"), i.ExePath("nekca-apps", "0.1.5"));
+        Assert.Equal(stamp, File.GetLastWriteTimeUtc(Path.Combine(folder, "NekcaApps.exe"))); // not copied again
+    }
+}
